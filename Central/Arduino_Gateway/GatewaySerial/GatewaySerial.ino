@@ -38,6 +38,7 @@
 
 // Enable debug prints to serial monitor
 #define MY_DEBUG
+//#define MY_DEBUG_VERBOSE_SIGNING 
 
 
 // Enable and select radio type attached
@@ -47,6 +48,10 @@
 // Set LOW transmit power level as default, if you have an amplified NRF-module and
 // power your radio separately with a good regulator you can turn up PA level.
 #define MY_RF24_PA_LEVEL RF24_PA_MAX
+
+#define MY_SIGNING_SOFT
+#define MY_SIGNING_REQUEST_SIGNATURES
+#define MY_SIGNING_GW_REQUEST_SIGNATURES_FROM_ALL
 
 // Enable serial gateway
 #define MY_GATEWAY_SERIAL

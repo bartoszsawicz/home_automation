@@ -1,5 +1,6 @@
 // Enable debug prints
 #define MY_DEBUG
+//#define MY_DEBUG_VERBOSE_SIGNING 
 
 // Enable and select radio type attached
 #define MY_RADIO_NRF24
@@ -19,6 +20,7 @@
 #define PIN_FIRST_DOOR 4
 #define NUMBER_OF_DOORS 3
 #define CHILD_ID_FIST_DOOR 2
+#define CHILD_ID_HEARTBEAT 99
 
 // Set this offset if the sensor has a permanent small offset to the real temperatures
 #define SENSOR_TEMP_OFFSET 0
@@ -26,7 +28,8 @@
 // Sleep time between sensor updates (in milliseconds)
 // Must be >1000ms for DHT22 and >2000ms for DHT11
 static const uint64_t UPDATE_INTERVAL = 60000;
-static const uint64_t HEARTBEAT_INTERVAL = 60000;
+static const uint64_t HEARTBEAT_INTERVAL = 15000;
+static const uint64_t MAX_RETRIES = 100;
 
 // Force sending an update of the temperature after n sensor reads, so a controller showing the
 // timestamp of the last update doesn't show something like 3 hours in the unlikely case, that
@@ -47,10 +50,13 @@ int doorOpen[NUMBER_OF_DOORS];
 
 long lastTemperatureUpdateMilis = 0;
 long lastHeartbeatTime = 0;
+bool heartbeatState = false;
+int retryCount = 0;
 
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 MyMessage doorMsgs[NUMBER_OF_DOORS];
+MyMessage msgHeartbeat(CHILD_ID_HEARTBEAT, V_TRIPPED);
 DHT dht;
 
 Bounce doorDebouncers[NUMBER_OF_DOORS];
@@ -68,7 +74,7 @@ void presentation()
     int child_id = sensor + CHILD_ID_FIST_DOOR;
     present(child_id, S_DOOR);
   }
-
+  present(CHILD_ID_HEARTBEAT, S_DOOR);
   metric = getControllerConfig().isMetric;
 }
 
@@ -103,22 +109,42 @@ void setup()
 
 void loop()
 {
-  if (millis() > lastTemperatureUpdateMilis + UPDATE_INTERVAL) {
+  if (shouldUpdateTemperature()) {
     updateTemperature();
   }
-  if (millis() > lastHeartbeatTime + HEARTBEAT_INTERVAL) {
-    lastHeartbeatTime = millis();
-    sendHeartbeat();
+  if (shouldSendHeartbeat()) {
+    sendHeartBeat();
   }
 
   for (int i = 0; i < NUMBER_OF_DOORS; i++) {
     doorDebouncers[i].update();
     int currentRead = doorDebouncers[i].read();
     if (currentRead != doorOpen[i]) {
-      send(doorMsgs[i].set(currentRead == HIGH ? 1 : 0));
-      doorOpen[i] = currentRead;
+      bool result = send(doorMsgs[i].set(currentRead == HIGH ? 1 : 0), true);
+      if (result || retryCount > MAX_RETRIES) {
+        doorOpen[i] = currentRead;
+        retryCount = 0;
+      } else {
+        retryCount++;
+      }
     }
   }
+}
+
+bool shouldUpdateTemperature() {
+  return millis() > lastTemperatureUpdateMilis + UPDATE_INTERVAL;
+}
+
+bool shouldSendHeartbeat() {
+  return millis() > lastHeartbeatTime + HEARTBEAT_INTERVAL;
+}
+
+void sendHeartBeat() {
+  bool result = send(msgHeartbeat.set(heartbeatState), true);    
+  if (result) {
+    heartbeatState = !heartbeatState;
+  }
+  lastHeartbeatTime = millis();
 }
 
 void updateTemperature() {
