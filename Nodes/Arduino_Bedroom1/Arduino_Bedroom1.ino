@@ -18,7 +18,7 @@
 #define DHT_DATA_PIN 3
 
 #define PIN_FIRST_DOOR 4
-#define NUMBER_OF_DOORS 3
+#define NUMBER_OF_DOORS 1
 #define CHILD_ID_FIST_DOOR 2
 #define CHILD_ID_HEARTBEAT 99
 
@@ -64,7 +64,7 @@ Bounce doorDebouncers[NUMBER_OF_DOORS];
 void presentation()
 {
   // Send the sketch version information to the gateway
-  sendSketchInfo("Living Room Sensor Node", "1.0");
+  sendSketchInfo("Bedroom Sensor Node", "1.0");
 
   // Register all sensors to gw (they will be created as child devices)
   present(CHILD_ID_HUM, S_HUM);
