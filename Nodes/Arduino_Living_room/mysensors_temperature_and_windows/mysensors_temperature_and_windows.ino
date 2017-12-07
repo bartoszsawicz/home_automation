@@ -13,6 +13,7 @@
 #include <MySensors.h>
 #include <Bounce2.h>
 #include <DHT.h>
+#include <RCSwitch.h>
 
 // Set this to the pin you connected the DHT's data pin to
 #define DHT_DATA_PIN 3
@@ -21,6 +22,14 @@
 #define NUMBER_OF_DOORS 3
 #define CHILD_ID_FIST_DOOR 2
 #define CHILD_ID_HEARTBEAT 99
+#define RADIO433_DATA_PIN 8
+#define NUMBER_OF_433_SWITCHES 8
+#define CHILD_ID_FIST_433_SWITCH 5
+
+#define RF433_ON_CODES_VALUES 1000501,1000502,1000503,1000504,1000505,1000506,1000507,1000508
+const uint8_t RF433_ON_CODES[8] = {RF433_ON_CODES};
+#define RF433_OFF_CODES_VALUES 1000511,1000512,1000513,1000514,1000515,1000516,1000517,1000518
+const uint8_t RF433_OFF_CODES[8] = {RF433_ON_CODES};
 
 // Set this offset if the sensor has a permanent small offset to the real temperatures
 #define SENSOR_TEMP_OFFSET 0
@@ -45,6 +54,7 @@ float lastHum;
 uint8_t nNoUpdatesTemp;
 uint8_t nNoUpdatesHum;
 bool metric = true;
+bool initialValuesSent = false;
 
 int doorOpen[NUMBER_OF_DOORS];
 
@@ -56,10 +66,13 @@ int retryCount = 0;
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 MyMessage doorMsgs[NUMBER_OF_DOORS];
+MyMessage r433Msgs[NUMBER_OF_433_SWITCHES];
 MyMessage msgHeartbeat(CHILD_ID_HEARTBEAT, V_TRIPPED);
 DHT dht;
 
 Bounce doorDebouncers[NUMBER_OF_DOORS];
+
+RCSwitch mySwitch = RCSwitch();
 
 void presentation()
 {
@@ -74,8 +87,14 @@ void presentation()
     int child_id = sensor + CHILD_ID_FIST_DOOR;
     present(child_id, S_DOOR);
   }
+  for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
+    int child_id = sensor + CHILD_ID_FIST_433_SWITCH;
+    present(child_id, S_BINARY);
+  }
   present(CHILD_ID_HEARTBEAT, S_DOOR);
   metric = getControllerConfig().isMetric;
+
+  mySwitch.enableTransmit(RADIO433_DATA_PIN);
 }
 
 
@@ -84,6 +103,12 @@ void setup()
   dht.setup(DHT_DATA_PIN); // set data pin of DHT sensor
   if (UPDATE_INTERVAL <= dht.getMinimumSamplingPeriod()) {
     Serial.println("Warning: UPDATE_INTERVAL is smaller than supported by the sensor!");
+  }
+
+  // RF433 MySENSORS MESSAGE SETUP
+  for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
+    int child_id = sensor + CHILD_ID_FIST_433_SWITCH;
+    r433Msgs[sensor] = MyMessage(child_id, V_STATUS);
   }
 
   // DOOR PIN SETUP
@@ -129,6 +154,22 @@ void loop()
       }
     }
   }
+  if (!initialValuesSent) {
+    #ifdef MY_DEBUG
+    Serial.println("Sending initial value");
+    #endif
+    for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
+      send(r433Msgs[sensor].set(false));
+    }
+    #ifdef MY_DEBUG
+    Serial.println("Requesting initial value from controller");
+    #endif
+    for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
+      int child_id = sensor + CHILD_ID_FIST_433_SWITCH;
+      request(child_id, V_STATUS);
+    }
+    wait(2000, C_SET, V_STATUS);
+  }
 }
 
 bool shouldUpdateTemperature() {
@@ -154,7 +195,9 @@ void updateTemperature() {
   // Get temperature from DHT library
   float temperature = dht.getTemperature();
   if (isnan(temperature)) {
-    Serial.println("Failed reading temperature from DHT!");
+#ifdef MY_DEBUG
+    Serial.println("Failed reading temperature from DHT");
+#endif
   } else if (temperature != lastTemp || nNoUpdatesTemp == FORCE_UPDATE_N_READS) {
     // Only send temperature if it changed since the last measurement or if we didn't send an update for n times
     lastTemp = temperature;
@@ -178,7 +221,9 @@ void updateTemperature() {
   // Get humidity from DHT library
   float humidity = dht.getHumidity();
   if (isnan(humidity)) {
+#ifdef MY_DEBUG
     Serial.println("Failed reading humidity from DHT");
+#endif
   } else if (humidity != lastHum || nNoUpdatesHum == FORCE_UPDATE_N_READS) {
     // Only send humidity if it changed since the last measurement or if we didn't send an update for n times
     lastHum = humidity;
@@ -196,5 +241,24 @@ void updateTemperature() {
   }
 
   lastTemperatureUpdateMilis = millis();
+}
+
+void receive(const MyMessage &message) {
+  if (message.type==V_STATUS) {
+    if (!initialValuesSent) {
+      initialValuesSent = true;
+    }  
+    if (message.sensor >= CHILD_ID_FIST_433_SWITCH && message.sensor < CHILD_ID_FIST_433_SWITCH + NUMBER_OF_433_SWITCHES) {
+      int rf433SwitchNumber = message.sensor - CHILD_ID_FIST_433_SWITCH;
+      int rf433Code;
+      if (message.getBool()) {
+        rf433Code = RF433_ON_CODES[rf433SwitchNumber];
+      } else {
+        rf433Code = RF433_OFF_CODES[rf433SwitchNumber];
+      }
+      mySwitch.send(rf433Code, 24);
+      send(r433Msgs[rf433SwitchNumber].set(message.getBool()));
+    }
+  }
 }
 
