@@ -1,5 +1,5 @@
 // Enable debug prints
-#define MY_DEBUG
+//#define MY_DEBUG
 //#define MY_DEBUG_VERBOSE_SIGNING 
 
 // Enable and select radio type attached
@@ -26,10 +26,10 @@
 #define NUMBER_OF_433_SWITCHES 8
 #define CHILD_ID_FIST_433_SWITCH 5
 
-#define RF433_ON_CODES_VALUES 1000501,1000502,1000503,1000504,1000505,1000506,1000507,1000508
-const uint8_t RF433_ON_CODES[8] = {RF433_ON_CODES};
-#define RF433_OFF_CODES_VALUES 1000511,1000512,1000513,1000514,1000515,1000516,1000517,1000518
-const uint8_t RF433_OFF_CODES[8] = {RF433_ON_CODES};
+#define RF433_ON_CODES_VALUES 0x01,0x02,0x3,0x04,0x05,0x06,0x07,0x08
+const uint8_t RF433_ON_CODES[8] = {RF433_ON_CODES_VALUES};
+#define RF433_OFF_CODES_VALUES 0x11,0x12,0x13,0x14,0x15,0x16,0x17,0x18
+const uint8_t RF433_OFF_CODES[8] = {RF433_OFF_CODES_VALUES};
 
 // Set this offset if the sensor has a permanent small offset to the real temperatures
 #define SENSOR_TEMP_OFFSET 0
@@ -105,12 +105,6 @@ void setup()
     Serial.println("Warning: UPDATE_INTERVAL is smaller than supported by the sensor!");
   }
 
-  // RF433 MySENSORS MESSAGE SETUP
-  for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
-    int child_id = sensor + CHILD_ID_FIST_433_SWITCH;
-    r433Msgs[sensor] = MyMessage(child_id, V_STATUS);
-  }
-
   // DOOR PIN SETUP
   for (int sensor = 0; sensor < NUMBER_OF_DOORS; sensor++) {
     doorOpen[sensor] = -1;
@@ -124,6 +118,12 @@ void setup()
     // After setting up the button, setup debouncer
     doorDebouncers[sensor].attach(pin);
     doorDebouncers[sensor].interval(5);
+  }
+
+  // RF433 MySENSORS MESSAGE SETUP
+  for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
+    int child_id = sensor + CHILD_ID_FIST_433_SWITCH;
+    r433Msgs[sensor] = MyMessage(child_id, V_STATUS);
   }
 
   // Sleep for the time of the minimum sampling period to give the sensor time to power up
@@ -166,9 +166,13 @@ void loop()
     #endif
     for (int sensor = 0; sensor < NUMBER_OF_433_SWITCHES; sensor++) {
       int child_id = sensor + CHILD_ID_FIST_433_SWITCH;
+      #ifdef MY_DEBUG
+      Serial.print("Requesting value for child");
+      Serial.println(child_id);
+      #endif      
       request(child_id, V_STATUS);
+      wait(2000, C_SET, V_STATUS);
     }
-    wait(2000, C_SET, V_STATUS);
   }
 }
 
@@ -248,15 +252,28 @@ void receive(const MyMessage &message) {
     if (!initialValuesSent) {
       initialValuesSent = true;
     }  
-    if (message.sensor >= CHILD_ID_FIST_433_SWITCH && message.sensor < CHILD_ID_FIST_433_SWITCH + NUMBER_OF_433_SWITCHES) {
+    #ifdef MY_DEBUG
+    Serial.print("MySensors message child ");
+    Serial.print(message.sensor);
+    Serial.print(": ");
+    Serial.println(message.getBool());
+    #endif
+
+    if ((message.sensor >= CHILD_ID_FIST_433_SWITCH) && (message.sensor < (CHILD_ID_FIST_433_SWITCH + NUMBER_OF_433_SWITCHES))) {
       int rf433SwitchNumber = message.sensor - CHILD_ID_FIST_433_SWITCH;
-      int rf433Code;
+      uint32_t rf433Code = 10005000;
       if (message.getBool()) {
-        rf433Code = RF433_ON_CODES[rf433SwitchNumber];
+        rf433Code = rf433Code | RF433_ON_CODES[rf433SwitchNumber];
       } else {
-        rf433Code = RF433_OFF_CODES[rf433SwitchNumber];
+        rf433Code = rf433Code | RF433_OFF_CODES[rf433SwitchNumber];
       }
       mySwitch.send(rf433Code, 24);
+      #ifdef MY_DEBUG
+      Serial.print("Sent RF433 for switch ");
+      Serial.print(rf433SwitchNumber);
+      Serial.print(" code: ");
+      Serial.println(rf433Code);
+      #endif
       send(r433Msgs[rf433SwitchNumber].set(message.getBool()));
     }
   }

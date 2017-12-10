@@ -1,14 +1,14 @@
 #include <RCSwitch.h>
 
-#define RELAY1_ON_CODE 1000501
-#define RELAY2_ON_CODE 1000502
-#define RELAY3_ON_CODE 1000503
-#define RELAY4_ON_CODE 1000504
+#define RELAY1_ON_CODE 10005005
+#define RELAY2_ON_CODE 10005006
+#define RELAY3_ON_CODE 10005007
+#define RELAY4_ON_CODE 10005000
 
-#define RELAY1_OFF_CODE 1000511
-#define RELAY2_OFF_CODE 1000512
-#define RELAY3_OFF_CODE 1000513
-#define RELAY4_OFF_CODE 1000514
+#define RELAY1_OFF_CODE 10005020
+#define RELAY2_OFF_CODE 10005022
+#define RELAY3_OFF_CODE 10005023
+#define RELAY4_OFF_CODE 10005016
 
 #define RELAY1_PIN 3
 #define RELAY2_PIN 4
@@ -29,7 +29,7 @@ void setup() {
   digitalWrite(RELAY2_PIN, LOW);
   digitalWrite(RELAY3_PIN, LOW);
   digitalWrite(RELAY4_PIN, LOW);
-
+  Serial.println("Ready ");
 }
 
 void loop() {
